@@ -329,7 +329,12 @@ var patternlab_engine = function (config) {
   function writePatternFiles(headHTML, pattern, footerHTML) {
     const nullFormatter = str => str;
     const defaultFormatter = codeString => cleanHtml(codeString, {indent_size: 2});
-    const makePath = type => path.join(paths.public.patterns, pattern.getPatternLink(patternlab, type));
+    if(patternlab.data.language_code === 'default') {
+      var makePath = type => path.join(paths.public.patterns, pattern.getPatternLink(patternlab, type));
+    }
+    else {
+      var makePath = type => path.join(paths.public.patterns, String(patternlab.data.language_code), pattern.getPatternLink(patternlab, type));
+    }
     const patternPage = headHTML + pattern.patternPartialCode + footerHTML;
     const eng = pattern.engine;
 
@@ -383,7 +388,6 @@ var patternlab_engine = function (config) {
       console.log('There was an error parsing JSON for ' + pattern.relPath);
       console.log(err);
     }
-    allData = plutils.mergeData(allData, pattern.jsonFileData);
     allData.cacheBuster = patternlab.cacheBuster;
 
     //re-rendering the headHTML each time allows pattern-specific data to influence the head of the pattern
@@ -596,7 +600,8 @@ var patternlab_engine = function (config) {
     }
 
     //render all patterns last, so lineageR works
-    patternsToBuild.forEach(pattern => renderSinglePattern(pattern, head));
+    var localizedDataArray = getLocalizationData(paths.source.data);
+    localizedDataArray.forEach(dataObject => localizePatternArray(dataObject, patternsToBuild, head));
 
     // Saves the pattern graph when all files have been compiled
     PatternGraph.storeToFile(patternlab);
@@ -607,6 +612,30 @@ var patternlab_engine = function (config) {
 
     //export patterns if necessary
     pattern_exporter.export_patterns(patternlab);
+  }
+
+  function getLocalizationData(Path) {
+    const glob = require('glob'),
+      yaml = require('js-yaml');
+    let globOptions = {};
+    const excludeFullPath = Path + 'listitems.json';
+    globOptions.ignore = [excludeFullPath];
+    const dataFilesFullPath = Path + '*.json';
+    const dataFiles = glob.sync(dataFilesFullPath, globOptions);
+    var mergeObject = [];
+    dataFiles.forEach(function (filePath) {
+      let jsonData = yaml.safeLoad(fs.readFileSync(path.resolve(filePath), 'utf8'));
+      mergeObject.push(jsonData);
+    });
+    return mergeObject;
+  }
+
+  function localizePatternArray(dataObject, patternsToBuild, head) {
+    for (let p of patternsToBuild) {
+      p.compileState = CompileState.NEEDS_REBUILD;
+    }
+    patternlab.data = dataObject;
+    patternsToBuild.forEach(pattern => renderSinglePattern(pattern, head));
   }
 
   return {
